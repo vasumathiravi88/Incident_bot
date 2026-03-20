@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+nanobot-ai
+streamlit
+requests
+python-dotenv
+PyJWT
