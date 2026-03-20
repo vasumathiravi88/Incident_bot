@@ -20,7 +20,7 @@ EXPOSE 8000
 EXPOSE 8501
 
 # Supervisor configuration to manage both processes simultaneously
-RUN echo '[supervisord]\nnodaemon=true\n\n[program:api]\ncommand=uvicorn main:app --host 0.0.0.0 --port 8000\nautostart=true\nautorestart=true\n\n[program:streamlit]\ncommand=streamlit run app.py --server.port=8501 --server.address=0.0.0.0\nautostart=true\nautorestart=true' > /etc/supervisor/conf.d/supervisord.conf
+COPY supervisord.conf /etc/supervisor/supervisord.conf
 
 # Start supervisor to keep both services running as one single AWS unit
-CMD ["/usr/bin/supervisord"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

@@ -153,15 +153,9 @@ if st.button("Execute Pipeline", type="primary"):
                     data = response.json()
                     st.markdown("**PROCESS: SUCCESS**")
                     
-                    st.markdown("### 🔍 Root Cause Analysis Agent")
+                    st.markdown("### 💡 Resolution")
                     with st.container():
-                        st.info(data.get("root_cause_analysis", ""))
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    
-                    st.markdown("### 🛠️ Remediation Agent")
-                    with st.container():
-                        st.success(data.get("recommendations", ""))
+                        st.success(data.get("resolution", "No resolution data provided in the response."))
                     
                     if data.get("errors_ignored"):
                         with st.expander("Fallback Pipeline Logs (Ignored Failures)"):
