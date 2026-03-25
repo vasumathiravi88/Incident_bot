@@ -112,6 +112,12 @@ st.markdown("Automated Multi-Agent Issue Resolution Pipeline")
 # Initialize session state for auth token
 if "auth_token" not in st.session_state:
     st.session_state["auth_token"] = None
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+if "current_log" not in st.session_state:
+    st.session_state["current_log"] = ""
+if "parsed_log" not in st.session_state:
+    st.session_state["parsed_log"] = ""
 
 # Sidebar Authentication
 with st.sidebar:
@@ -133,35 +139,48 @@ with st.sidebar:
             st.rerun()
 
 st.subheader("Input Pipeline")
-error_log = st.text_area("Paste Raw Stacktrace or Error Log here:", height=250)
 
-if st.button("Execute Pipeline", type="primary"):
+uploaded_file = st.file_uploader("Upload Log File (.txt, .log)", type=["txt", "log"])
+if uploaded_file is not None:
+    if st.button("Parse Log File Backend"):
+        if not st.session_state["auth_token"]:
+            st.error("Unauthorized. Please provide your Bearer Token in the Sidebar.")
+        else:
+            headers = {"Authorization": f"Bearer {st.session_state['auth_token']}"}
+            BACKEND_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/plain")}
+            with st.spinner("Parsing log in backend..."):
+                try:
+                    r = requests.post(f"{BACKEND_URL}/parse_log", headers=headers, files=files)
+                    if r.status_code == 200:
+                        st.session_state["parsed_log"] = r.json().get("parsed_log", "")
+                        st.success("Log parsed successfully!")
+                    else:
+                        st.error(f"Failed to parse log: {r.text}")
+                except Exception as e:
+                    st.error(f"Connection failed: {e}")
+
+error_log = st.text_area("Paste Raw Stacktrace or Error Log here:", value=st.session_state["parsed_log"], height=250)
+
+if st.button("Execute Initial Pipeline", type="primary"):
     if not st.session_state["auth_token"]:
         st.error("Unauthorized. Please provide your Bearer Token in the Sidebar.")
     elif not error_log.strip():
         st.warning("Payload Empty. Input required.")
     else:
         with st.spinner("INITIATING MULTI-AGENT SUBROUTINE..."):
+            st.session_state["current_log"] = error_log.strip()
+            st.session_state["messages"] = []
             try:
                 headers = {"Authorization": f"Bearer {st.session_state['auth_token']}"}
-                # Use environment variable for backend URL in production, fallback to localhost
                 BACKEND_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
-                payload = {"error_log": error_log}
+                payload = {"error_log": error_log, "messages": []}
                 response = requests.post(f"{BACKEND_URL}/analyze", json=payload, headers=headers)
                 
                 if response.status_code == 200:
                     data = response.json()
-                    st.markdown("**PROCESS: SUCCESS**")
-                    
-                    st.markdown("### 💡 Resolution")
-                    with st.container():
-                        st.success(data.get("resolution", "No resolution data provided in the response."))
-                    
-                    if data.get("errors_ignored"):
-                        with st.expander("Fallback Pipeline Logs (Ignored Failures)"):
-                            for err in data["errors_ignored"]:
-                                st.error(err)
-                                
+                    resolution = data.get("resolution", "No resolution data provided.")
+                    st.session_state["messages"].append({"role": "assistant", "content": resolution})
                 elif response.status_code == 401:
                     st.error("Token Invalid or Expired. Please Check your JWT.")
                 else:
@@ -169,3 +188,39 @@ if st.button("Execute Pipeline", type="primary"):
                     
             except requests.exceptions.ConnectionError:
                 st.error("Connection Refused. Verify API Backend Status is running on port 8000.")
+
+st.markdown("---")
+st.subheader("Conversation")
+
+for msg in st.session_state["messages"]:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+if prompt := st.chat_input("Ask a follow-up question..."):
+    if not st.session_state["current_log"]:
+        st.warning("Please execute the initial pipeline first.")
+    else:
+        st.session_state["messages"].append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            
+        with st.spinner("Analyzing follow-up..."):
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state['auth_token']}"}
+                BACKEND_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+                payload = {
+                    "error_log": st.session_state["current_log"],
+                    "messages": st.session_state["messages"]
+                }
+                response = requests.post(f"{BACKEND_URL}/analyze", json=payload, headers=headers)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    resolution = data.get("resolution", "No resolution data provided.")
+                    st.session_state["messages"].append({"role": "assistant", "content": resolution})
+                    with st.chat_message("assistant"):
+                        st.markdown(resolution)
+                else:
+                    st.error(f"Execution Error: {response.text}")
+            except Exception as e:
+                st.error(f"Connection failed: {e}")

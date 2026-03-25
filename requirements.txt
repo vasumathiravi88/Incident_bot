@@ -5,3 +5,5 @@ streamlit
 requests
 python-dotenv
 PyJWT
+redis
+python-multipart
